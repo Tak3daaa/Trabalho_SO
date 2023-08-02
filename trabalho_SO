@@ -1,0 +1,93 @@
+#include <pthread.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+
+#define BUF_SIZE 3
+#define Qntd_itens 5
+
+typedef struct {
+    int buf[BUF_SIZE];
+    size_t len;
+    pthread_mutex_t mutex;
+    pthread_cond_t can_produce;
+    pthread_cond_t can_consume;
+} buffer_t;
+
+void* producer(void *arg) {
+    buffer_t *buffer = (buffer_t*)arg;
+
+    for (int i = 0; i < Qntd_itens; i++) {
+        pthread_mutex_lock(&buffer->mutex);
+        while (buffer->len == BUF_SIZE) {
+            printf("O buffer está cheio!\n");
+            pthread_cond_wait(&buffer->can_produce, &buffer->mutex);
+        }
+
+        int item = rand() % 10;
+        printf("Produzido: %d\n", item);
+
+        buffer->buf[buffer->len] = item;
+        ++buffer->len;
+
+        pthread_cond_signal(&buffer->can_consume);
+        pthread_mutex_unlock(&buffer->mutex);
+    }
+
+    return NULL;
+}
+
+void* consumer(void *arg) {
+    buffer_t *buffer = (buffer_t*)arg;
+
+    for (int i = 0; i < Qntd_itens; i++) {
+        pthread_mutex_lock(&buffer->mutex);
+        while (buffer->len == 0) {
+            printf("O buffer está vazio!\n");
+            pthread_cond_wait(&buffer->can_consume, &buffer->mutex);
+        }
+
+        --buffer->len;
+        printf("Consumido: %d\n", buffer->buf[buffer->len]);
+
+        pthread_cond_signal(&buffer->can_produce);
+        pthread_mutex_unlock(&buffer->mutex);
+    }
+
+    return NULL;
+}
+
+int main(int argc, char *argv[]) {
+    buffer_t buffer = {
+        .len = 0,
+        .mutex = PTHREAD_MUTEX_INITIALIZER,
+        .can_produce = PTHREAD_COND_INITIALIZER,
+        .can_consume = PTHREAD_COND_INITIALIZER
+    };
+
+    int num_producers = 1;
+    int num_consumers = 1;
+
+    pthread_t producers[num_producers];
+    pthread_t consumers[num_consumers];
+
+    for (int i = 0; i < num_producers; ++i) {
+        pthread_create(&producers[i], NULL, producer, (void*)&buffer);
+    }
+
+    for (int i = 0; i < num_consumers; ++i) {
+        pthread_create(&consumers[i], NULL, consumer, (void*)&buffer);
+    }
+
+    for (int i = 0; i < num_producers; ++i) {
+        pthread_join(producers[i], NULL);
+    }
+
+    for (int i = 0; i < num_consumers; ++i) {
+        pthread_join(consumers[i], NULL);
+    }
+
+    printf("Programa finalizado.\n");
+
+    return 0;
+}
